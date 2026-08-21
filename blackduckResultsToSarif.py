@@ -139,7 +139,7 @@ def getEPSS_scoring(vulnerability):
     response = requests.get(f'https://api.first.org/data/v1/epss?cve={vulnerability}', verify=False)
     if response.status_code == 200:
         epssJson = response.json()["data"][0]
-        logging.debug(epssJson)
+        logging.info(epssJson)
         epss = round(float(epssJson["epss"])*100, 3)
         percentile = int(round(float(epssJson["percentile"])*100, 0))
         return epss, percentile
