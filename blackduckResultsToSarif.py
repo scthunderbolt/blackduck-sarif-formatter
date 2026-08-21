@@ -137,12 +137,30 @@ def getPolicyRules(hub, data):
 
 def getEPSS_scoring(vulnerability):
     response = requests.get(f'https://api.first.org/data/v1/epss?cve={vulnerability}', verify=False)
-    if response.status_code == 200:
-        epssJson = response.json()["data"][0]
-        logging.info(epssJson)
+    if response.status_code != 200:
+        logging.warning("EPSS lookup for %s returned HTTP %s", vulnerability, response.status_code)
+        return None, None
+
+    try:
+        epss_data = response.json().get("data", [])
+    except ValueError:
+        logging.warning("EPSS lookup for %s returned invalid JSON", vulnerability)
+        return None, None
+
+    if not epss_data:
+        logging.info("No EPSS score is available for %s", vulnerability)
+        return None, None
+
+    try:
+        epssJson = epss_data[0]
         epss = round(float(epssJson["epss"])*100, 3)
         percentile = int(round(float(epssJson["percentile"])*100, 0))
-        return epss, percentile
+    except (IndexError, KeyError, TypeError, ValueError):
+        logging.warning("EPSS lookup for %s returned malformed score data: %s", vulnerability, epss_data)
+        return None, None
+
+    logging.info(epssJson)
+    return epss, percentile
 
 def addFindings():
     global args
