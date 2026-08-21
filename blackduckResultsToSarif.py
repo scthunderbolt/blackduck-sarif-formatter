@@ -165,7 +165,15 @@ def addFindings():
                             for policy in policy_rules:
                                 if policy["category"] in args.policyCategories.split(','): 
                                     policies.append(policy)
-                component_vulnerabilities = getLinksData(hub, component, "vulnerabilities")['items']
+                vulnerabilities_response = getLinksData(hub, component, "vulnerabilities")
+                if vulnerabilities_response and "items" not in vulnerabilities_response:
+                    logging.warning(
+                        "Vulnerabilities response for %s %s did not contain items: %s",
+                        component["componentName"],
+                        component["componentVersionName"],
+                        vulnerabilities_response,
+                    )
+                component_vulnerabilities = (vulnerabilities_response or {}).get("items", [])
                 ruleId = ""
                 # Creating sarif for vulnerabilities
                 if component_vulnerabilities and len(component_vulnerabilities) > 0:
