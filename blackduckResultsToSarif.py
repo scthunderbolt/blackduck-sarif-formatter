@@ -656,7 +656,7 @@ def getHelpMarkdown(hub, projectId, projectVersionId, policies, component, vulne
     messageText += f"**Black Duck Component Name:** {component['componentName']}\n"
     messageText += f"**Black Duck Component Version:** {component['componentVersionName']}\n"
     if "origins" in component and len(component["origins"]) > 0:
-        messageText += f"**Black Duck Component Origin:** {component['origins'][0]['externalId']}"
+        messageText += f"**Black Duck Component Origin:** {checkOrigin(component)}"
     shortDescription = f"{dependencyType.capitalize()}: {component['componentName']} {component['componentVersionName']} ({shortDescriptionVuln})"
     return shortDescription, dependencyType, cisa, messageText
 
