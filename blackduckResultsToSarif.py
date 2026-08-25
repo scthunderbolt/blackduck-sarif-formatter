@@ -72,21 +72,29 @@ def get_Transitive_upgrade_guidance(hub, projectId, projectVersionId, component)
                 for dependency in dependency_paths['items']:
                     dependency_type = dependency["type"]
                     if dependency["type"] == "TRANSITIVE":
-                        if not dependency["path"][-2]["originId"] in origins_cache.keys():
-                            transitive_guidance = getLinksData(hub, dependency["path"][-2], "transitive-upgrade-guidances")
-                            if transitive_guidance:
-                                transitive_guidances.append(transitive_guidance)
-                                origins_cache[dependency["path"][-2]["originId"]] = transitive_guidance
-                        else:
-                            transitive_guidances.append(origins_cache.get(dependency["path"][-2]["originId"]))
+                        if len(dependency.get("path", [])) < 2:
+                            logging.warning("Skipping transitive upgrade guidance with incomplete dependency path")
+                            continue
+                        guidance_component = dependency["path"][-2]
+                        guidance_relation = "transitive-upgrade-guidances"
                     else:
-                        if not dependency["path"][0]["originId"] in origins_cache.keys():
-                            transitive_guidance = getLinksData(hub, dependency["path"][0], "upgrade-guidance")
-                            if transitive_guidance:
-                                transitive_guidances.append(transitive_guidance)
-                                origins_cache[dependency["path"][0]["originId"]] = transitive_guidance
-                        else:
-                            transitive_guidances.append(origins_cache.get(dependency["path"][0]["originId"]))
+                        if not dependency.get("path"):
+                            logging.warning("Skipping upgrade guidance with empty dependency path")
+                            continue
+                        guidance_component = dependency["path"][0]
+                        guidance_relation = "upgrade-guidance"
+
+                    origin_id = guidance_component.get("originId")
+                    if not origin_id:
+                        logging.warning("Skipping upgrade guidance without an origin ID")
+                        continue
+                    if origin_id not in origins_cache:
+                        transitive_guidance = getLinksData(hub, guidance_component, guidance_relation)
+                        if transitive_guidance:
+                            transitive_guidances.append(transitive_guidance)
+                            origins_cache[origin_id] = transitive_guidance
+                    else:
+                        transitive_guidances.append(origins_cache[origin_id])
     return dependency_type, transitive_guidances
 
 def get_vulnerability_overview(hub, vulnerability):
