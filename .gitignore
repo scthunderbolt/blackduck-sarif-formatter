@@ -12,5 +12,6 @@ iac_findings.json
 sampleapp.sarif.json
 jounistest.sarif.json
 cisaTest.sarif.json
+results.sarif
 vulnerabilities-overview.json
 vulnerabilities.json
