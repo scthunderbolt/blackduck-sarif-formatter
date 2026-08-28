@@ -181,6 +181,7 @@ def addFindings():
         components = get_version_components(hub, version)['items']
         for component in components:
             if not component['componentType'] == "SUB_PROJECT":
+                # logging.info("Processing component %s", component)
                 locations, dependency_tree, dependency_tree_matched = checkLocations(hub, projectId, projectVersionId, component)
                 policies = []
                 if args.policies:
@@ -863,6 +864,7 @@ if __name__ == '__main__':
         parser.add_argument('--outputFile', help="Filename with path where it will be created, example: /tmp/bdFindings.sarif.json \
                                                 if outputfile is not given, then json is printed stdout.", required=False)
         parser.add_argument('--log_level', help="Will print more info... default=INFO", default="INFO")
+        parser.add_argument('--logFile', help="Filename with path where logs are written", required=False)
         parser.add_argument('--policyCategories', help="Comma separated list of policy categories, which violations will affect. \
             Options are [COMPONENT,SECURITY,LICENSE,UNCATEGORIZED,OPERATIONAL], default=\"SECURITY\"", default="SECURITY")
         parser.add_argument('--policies', help="true, policy information is added", default=False, type=str2bool)
@@ -873,7 +875,10 @@ if __name__ == '__main__':
         if args.log_level == "9": log_level = "DEBUG"
         elif args.log_level == "0": log_level = "INFO"
         else: log_level = args.log_level
-        logging.basicConfig(format='%(asctime)s:%(levelname)s:%(module)s: %(message)s', stream=sys.stderr, level=log_level)
+        log_handlers = [logging.StreamHandler(sys.stderr)]
+        if args.logFile:
+            log_handlers.append(logging.FileHandler(args.logFile, encoding="UTF-8"))
+        logging.basicConfig(format='%(asctime)s:%(levelname)s:%(module)s: %(message)s', handlers=log_handlers, level=log_level)
         #Printing out the version number
         logging.info("Black Duck results to SARIF formatter version: " + __versionro__)
         if logging.getLogger().isEnabledFor(logging.DEBUG): logging.debug(f'Given params are: {args}')
