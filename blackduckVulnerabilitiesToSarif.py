@@ -101,10 +101,10 @@ def get_Transitive_upgrade_guidance(hub, projectId, projectVersionId, component)
 
 def get_vulnerability_overview(hub, vulnerability):
     vulnerability_overview = hub.execute_get(vulnerability['_meta']['href']).json()
-    if getattr(args, "vulnerabilities_output", False):
+    if getattr(args, "vulnerabilities_overview_output", False):
         vulnerability_overviews.append(vulnerability_overview)
         try:
-            with open("vulnerability-overviews.json", "w", encoding="UTF-8") as output_file:
+            with open("vulnerabilities-overview.json", "w", encoding="UTF-8") as output_file:
                 json.dump(vulnerability_overviews, output_file, indent=2)
         except OSError as error:
             logging.warning("Could not write vulnerable BOM component response: %s", error)
@@ -117,6 +117,25 @@ def get_version_components(hub, projectversion, limit=MAX_LIMIT):
     headers['Accept'] = 'application/vnd.blackducksoftware.bill-of-materials-6+json'
     response = requests.get(url, headers=headers, params=parameters, verify = not hub.config['insecure'])
     jsondata = response.json()
+    return jsondata
+
+def get_vulnerabilities(hub, projectversion, limit=MAX_LIMIT):
+    parameters={"limit": limit, "offset": 0, "filter": "remediationType:affected,remediationType:mitigated,remediationType:needs_review,remediationType:new,remediationType:remediation_complete,remediationType:remediation_required,remediationType:under_investigation"}
+    url = projectversion['_meta']['href'] + "/vulnerabilities"
+    headers = hub.get_headers()
+    headers['Accept'] = 'application/vnd.blackducksoftware.bill-of-materials-8+json'
+    response = requests.get(url, headers=headers, params=parameters, verify = not hub.config['insecure'])
+    jsondata = response.json()
+    total_count = jsondata.get("totalCount", 0)
+    vulnerabilities = jsondata.get("items", [])
+    offset = limit
+    while offset < total_count:
+        logging.debug("Getting vulnerabilities page %s/%s", offset, total_count)
+        parameters["offset"] = offset
+        response = requests.get(url, headers=headers, params=parameters, verify = not hub.config['insecure'])
+        vulnerabilities.extend(response.json().get("items", []))
+        offset += limit
+    jsondata["items"] = vulnerabilities
     return jsondata
 
 def get_Dependency_paths(hub, projectID, projectversionID, originID):
@@ -181,6 +200,32 @@ def addFindings():
     if version:
         projectVersionId = version["_meta"]["href"].split("/")[-1]
         projectId = version["_meta"]["href"].split("/")[-3]
+
+        vulnerabilities = get_vulnerabilities(hub, version)['items']
+
+        for vuln in vulnerabilities:
+            logging.info("Processing vulnerability: %s", vuln["id"])
+
+            vulnerability_data = getLinksData(hub, vuln, "vulnerability")
+            vuln["vulnerability_data"] = vulnerability_data
+
+            vulnerability_components = getLinksData(hub, vuln, "vulnerabilities-components")
+            vuln["vulnerability_components"] = vulnerability_components
+
+        if getattr(args, "vulnerabilities_output", False):
+            try:
+                with open("vulnerabilities.json", "w", encoding="UTF-8") as output_file:
+                    json.dump(vulnerabilities, output_file, indent=2)
+            except OSError as error:
+                logging.warning("Could not write vulnerabilities response: %s", error)
+
+        for vuln in vulnerabilities:
+            rule, result = {}, {}
+
+            vulnerability = vuln["vulnerability_data"]
+            vulnerability_components = vuln["vulnerability_components"]
+
+
         components = get_version_components(hub, version)['items']
         for component in components:
             if not component['componentType'] == "SUB_PROJECT":
@@ -196,14 +241,6 @@ def addFindings():
                                     policies.append(policy)
                 vulnerabilities_response = getLinksData(hub, component, "vulnerabilities")
                 logging.info("Processing component: %s %s", component["componentName"], component["componentVersionName"])
-                if getattr(args, "vulnerabilities_component_output", False):
-                    vulnerabilities_responses.append(vulnerabilities_response)
-                    component_name = re.sub(r"[^A-Za-z0-9._-]+", "_", component["componentName"]).strip("_") or "unknown-component"
-                    try:
-                        with open(f"vulnerabilities-responses-{component_name}.json", "w", encoding="UTF-8") as output_file:
-                            json.dump(vulnerabilities_responses, output_file, indent=2)
-                    except OSError as error:
-                        logging.warning("Could not write vulnerabilities response: %s", error)
                 if vulnerabilities_response and "items" not in vulnerabilities_response:
                     logging.warning(
                         "Vulnerabilities response for %s %s did not contain items: %s",
@@ -264,55 +301,7 @@ def addFindings():
                                 result['locations'] = locations
                             result['partialFingerprints'] = {"primaryLocationLineHash": hashlib.sha256((f'{policy_violation["name"]}{component["componentName"]}').encode(encoding='UTF-8')).hexdigest()}
                             results.append(result)
-        if args.add_iac:
-            iac_results = getIACFindings(hub, projectId, projectVersionId)
-            if len(iac_results) > 0:
-                for iac_result in iac_results:
-                    if not iac_result["ignored"]:
-                        iac_locations = []
-                        rule, result = {}, {}
-                        ruleId = f'{iac_result["checkerId"]+"-"+iac_result["fileName"] if "fileName" in iac_result else iac_result["checkerId"]}'
-                        ## Adding policy as a rule
-                        if not ruleId in ruleIds:
-                            rule = {"id":ruleId, "helpUri": iac_result['_meta']['href'], "shortDescription":{"text":f'{iac_result["summary"]} in {iac_result["fileName"]}'[:900]}, 
-                                "fullDescription":{"text":f'{iac_result["description"][:900] if "description" in iac_result else "-"}', "markdown": f'{iac_result["description"] if "description" in iac_results else "-"}'},
-                                "help":{"text":f'{iac_result["description"] if "description" in iac_result else "-"}', "markdown": getHelpMarkdownIAC(iac_result)},
-                                "properties": {"security-severity": nativeSeverityToNumber(iac_result['severity']['level'].lower()), "tags": addIACTags()},
-                                "defaultConfiguration":{"level":nativeSeverityToLevel(iac_result['severity']["level"].lower())}}
-                            rules.append(rule)
-                            ruleIds.append(ruleId)
-                        ## Adding results for policy violations
-                        result['message'] = {"text":f'{iac_result["description"][:1000] if "description" in iac_result else "-"}'}
-                        result['ruleId'] = ruleId
-                        iac_locations.append({"physicalLocation":{"artifactLocation":{"uri": iac_result["filePath"]},"region":{"startLine":int(iac_result["location"]["start"]["line"])}}})
-                        if iac_locations and len(iac_locations) > 0:
-                            result['locations'] = iac_locations
-                        result['partialFingerprints'] = {"primaryLocationLineHash": hashlib.sha256((f'{iac_result["checkerId"]}{iac_result["fileName"]}').encode(encoding='UTF-8')).hexdigest()}
-                        results.append(result)
     return results, rules
-
-def getIACFindings(hub, projectId, projectVersionId):
-    MAX_LIMT_IAC = 25
-    all_iac_findings = []
-    url = f"{hub.get_urlbase()}/api/projects/{projectId}/versions/{projectVersionId}/iac-issues?limit={MAX_LIMT_IAC}&offset=0"
-    headers = hub.get_headers()
-    headers['Accept'] = 'application/vnd.blackducksoftware.internal-1+json, application/json'
-    response = requests.get(url, headers=headers, verify = not hub.config['insecure'])
-    if response.status_code == 200:
-        result = response.json()
-        if "totalCount" in result:
-            total = result["totalCount"]
-            all_iac_findings = result["items"]
-            downloaded = MAX_LIMT_IAC
-            while total > downloaded:
-                logging.debug(f"getting next page {downloaded}/{total}")
-                url = f"{hub.get_urlbase()}/api/projects/{projectId}/versions/{projectVersionId}/iac-issues?limit={MAX_LIMT_IAC}&offset={downloaded}"
-                headers = hub.get_headers()
-                headers['Accept'] = 'application/vnd.blackducksoftware.internal-1+json, application/json'
-                response = requests.get(url, headers=headers, verify = not hub.config['insecure'])
-                all_iac_findings.extend(response.json()['items'])
-                downloaded += MAX_LIMT_IAC
-    return all_iac_findings
 
 def getDependenciesForComponent(hub, projectId, projectVersionId, component):
     dependencies = []
@@ -391,30 +380,6 @@ def getSeverity(vulnerability):
 
 def getSeverityScore(vulnerability):
     return f'{vulnerability["overallScore"] if "overallScore" in vulnerability else nativeSeverityToNumber(getSeverity(vulnerability).lower())}'
-
-def getHelpMarkdownIAC(iac_result):
-    messageText = ""
-    if iac_result:
-        messageText += f'## {iac_result["summary"]}\n'
-        messageText += f'{iac_result["description"] if "description" in iac_result else "-"}\n'
-        messageText += f'## Severity\n'
-        messageText += f'**Level:** {iac_result["severity"]["level"] if "severity" in iac_result else "-"}\t'
-        messageText += f'**Impact:** {iac_result["severity"]["impact"] if "severity" in iac_result else "-"}\t'
-        messageText += f'**Likelihood:** {iac_result["severity"]["likelihood"] if "severity" in iac_result else "-"}\n'
-        messageText += f'## Remediation\n'
-        messageText += f'{iac_result["remediation"] if "remediation" in iac_result else "-"}\n'
-        messageText += f'## Location\n'
-        messageText += f'**File Path:** {iac_result["filePath"] if "filePath" in iac_result else "-"}\n'
-        messageText += f'**Start:** Line: {str(iac_result["location"]["start"]["line"]) +",  Column: "+ str(iac_result["location"]["start"]["column"]) if "location" in iac_result else "-"}\n'
-        messageText += f'**End:** Line: {str(iac_result["location"]["end"]["line"]) +", Column: "+ str(iac_result["location"]["end"]["column"]) if "location" in iac_result else "-"}'
-        # METADATA for birectional connection
-        messageText += "\n\n## Metadata\n"
-        messageText += "**Black Duck Issue Type:** IAC\n"
-        messageText += f"**Black Duck Project Name:** {args.project}\n"
-        messageText += f"**Black Duck Project Version Name:** {args.version}\n"
-        messageText += f"**Black Duck IaC Checker:** {iac_result['checkerId']}"
-
-    return messageText
 
 def getHelpMarkdownLicense(component, policy_violation, dependency_tree, dependency_tree_matched):
     messageText = ""
@@ -767,12 +732,6 @@ def addLicenseTags():
     tags.append("security")
     return tags
 
-def addIACTags():
-    tags = []
-    tags.append("IAC")
-    tags.append("security")
-    return tags
-
 def checkOrigin(component):
     if "origins" in component:
         if len(component["origins"]) > 0 and "externalId" in component["origins"][0]:
@@ -879,9 +838,8 @@ if __name__ == '__main__':
         parser.add_argument('--policyCategories', help="Comma separated list of policy categories, which violations will affect. \
             Options are [COMPONENT,SECURITY,LICENSE,UNCATEGORIZED,OPERATIONAL], default=\"SECURITY\"", default="SECURITY")
         parser.add_argument('--policies', help="true, policy information is added", default=False, type=str2bool)
-        parser.add_argument('--add_iac', help="true, iac findings are added", default=False, type=str2bool)
-        parser.add_argument('--vulnerabilities_output', help="true, vulnerable BOM component responses are written to vulnerability-overviews.json", default=False, type=str2bool)
-        parser.add_argument('--vulnerabilities_component_output', help="true, vulnerability responses are written to vulnerabilities-responses.json", default=False, type=str2bool)
+        parser.add_argument('--vulnerabilities_overview_output', help="true, vulnerable BOM component responses are written to vulnerabilities-overview.json from the components REST API", default=False, type=str2bool)
+        parser.add_argument('--vulnerabilities_output', help="true, vulnerability responses are written to vulnerabilities.json from the vulnerabilities REST API", default=False, type=str2bool)
         parser.add_argument('--toolNameforSarif', help="Tool name for sarif", default="Synopsys Black Duck Intelligent", required=False)
         args = parser.parse_args()
         #Initializing the logger
