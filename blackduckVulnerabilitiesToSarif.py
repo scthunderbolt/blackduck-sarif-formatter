@@ -22,7 +22,7 @@ __versionro__ = version.__versionro__
 args = "" 
 MAX_LIMIT=1000
 
-toolName="Synopsys Black Duck Intelligent"
+toolName="BlackDuck SCA"
 supportedPackageManagerFiles = ["pom.xml","requirements.txt","package.json","package-lock.json",r".\.csproj",r".\.sln","go.mod","Gopkg.lock","gogradle.lock","vendor.json","vendor.conf"]
 dependency_cache = dict()
 origins_cache = {}
@@ -444,6 +444,8 @@ def getHelpMarkdown(hub, projectId, projectVersionId, component, vulnerability, 
     seeInBD=f'{hub.get_apibase()}/projects/{projectId}/versions/{projectVersionId}/vulnerability-bom?selectedComponent={component["component"].split("/")[-1]}&componentList.q={component["componentName"].replace(" ", "+")}'
     messageText += f"\n\n[Click Here To See More Details in Black Duck SCA]({seeInBD})"
 
+    #Adding Remediation status
+
     #Adding dependency tree or location
     if dependency_tree and len(dependency_tree) > 0:
         messageText += "\n\n## Dependency tree\n"
@@ -668,7 +670,7 @@ def getSarifJsonHeader():
     return {"$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","version":"2.1.0"}
 
 def getSarifJsonFooter(toolDriverName, rules):
-    return {"driver":{"name":toolDriverName,"informationUri": f'{args.url if args.url else ""}',"version":__versionro__,"organization":"Synopsys","rules":rules}}
+    return {"driver":{"name":toolDriverName,"informationUri": f'{args.url if args.url else ""}',"version":__versionro__,"organization":"BlackDuck","rules":rules}}
 
 def writeToFile(findingsInSarif, outputFile, mode="w"):
     f = open(outputFile, mode, encoding="UTF-8")
@@ -698,7 +700,7 @@ if __name__ == '__main__':
             Options are [COMPONENT,SECURITY,LICENSE,UNCATEGORIZED,OPERATIONAL], default=\"SECURITY\"", default="SECURITY")
         parser.add_argument('--policies', help="true, policy information is added", default=False, type=str2bool)
         parser.add_argument('--vulnerabilities_output', help="true, vulnerability responses are written to vulnerabilities.json from the vulnerabilities REST API", default=False, type=str2bool)
-        parser.add_argument('--toolNameforSarif', help="Tool name for sarif", default="Synopsys Black Duck Intelligent", required=False)
+        parser.add_argument('--toolNameforSarif', help="Tool name for sarif", default="BlackDuck SCA", required=False)
         args = parser.parse_args()
         #Initializing the logger
         if args.log_level == "9": log_level = "DEBUG"
