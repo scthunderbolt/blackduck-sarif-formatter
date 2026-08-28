@@ -201,6 +201,8 @@ def addFindings():
 
             vulnerability = vuln["vulnerability_data"]
             vulnerability_components = vuln["vulnerability_components"]
+            remediation_status = vuln["remediationStatus"][0]
+            logging.info("Remediation Status %s", remediation_status)
 
             if vulnerability_components.get("totalCount", 0) > 0:
                 component = vulnerability_components["items"][0]
@@ -213,7 +215,7 @@ def addFindings():
 
                 ## Adding vulnerabilities as a rule
                 if not ruleId in ruleIds:
-                    shortDescription, dependencyType, cisa, helpMarkdown = getHelpMarkdown(hub, projectId, projectVersionId, component, vulnerability, dependency_tree, dependency_tree_matched)
+                    shortDescription, dependencyType, cisa, helpMarkdown = getHelpMarkdown(hub, projectId, projectVersionId, component, vulnerability, dependency_tree, dependency_tree_matched, remediation_status)
                     rule = {"id":ruleId, "helpUri": vulnerability['_meta']['href'], "shortDescription":{"text":f'{shortDescription}'[:900]},
                         "fullDescription":{"text":f'{vulnerability["description"][:900] if vulnerability["description"] else "-"}', "markdown": f'{vulnerability["description"] if vulnerability["description"] else "-"}'},
                         "help":{"text":f'{vulnerability["description"] if vulnerability["description"] else "-"}', "markdown": helpMarkdown},
@@ -407,7 +409,7 @@ def getNomenclature(nomenclature):
             return 'Base, Threat, Environmental metrics (CVSS-BTE)'
     return "Base Score Metrics"
 
-def getHelpMarkdown(hub, projectId, projectVersionId, component, vulnerability, dependency_tree, dependency_tree_matched, policies=None):
+def getHelpMarkdown(hub, projectId, projectVersionId, component, vulnerability, dependency_tree, dependency_tree_matched, remediation_status):
     bdsa_link = ""
     messageText = ""
     related_vuln = None
@@ -445,6 +447,7 @@ def getHelpMarkdown(hub, projectId, projectVersionId, component, vulnerability, 
     messageText += f"\n\n[Click Here To See More Details in Black Duck SCA]({seeInBD})"
 
     #Adding Remediation status
+    messageText += f'\n\n## Remediation status\n{remediation_status}\n'
 
     #Adding dependency tree or location
     if dependency_tree and len(dependency_tree) > 0:
@@ -512,13 +515,6 @@ def getHelpMarkdown(hub, projectId, projectVersionId, component, vulnerability, 
         messageText += f'\n## Solution\n{vulnerability["solution"] if "solution" in vulnerability and vulnerability["solution"] else "No Solution"}'
     messageText += f'\n\n## Workaround\n{vulnerability["workaround"] if "workaround" in vulnerability and vulnerability["workaround"] else "No Workaround"}'
 
-    if policies:
-        messageText += "\n\n## Policy violations\n"
-        for policy in policies:
-            messageText += f'**Policy name:**\t{policy["name"] if "name" in policy else "-"}\n'
-            messageText += f'**Policy description:**\t{policy["description"] if "description" in policy else "-"}\n'
-            messageText += f'**Policy severity:**\t{policy["severity"] if "severity" in policy else "-"}\n\n'
-  
     if vulnerability:
         messageText += "\n\n## References\n"
         for metadata in vulnerability['_meta']['links']:
