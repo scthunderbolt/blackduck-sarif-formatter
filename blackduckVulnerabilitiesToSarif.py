@@ -223,7 +223,6 @@ def addFindings():
                     ruleIds.append(ruleId)
 
                 ## Adding results for vulnerabilities
-                """
                 fullDescription = ""
                 if "description" in vulnerability and vulnerability["description"]:
                     fullDescription += vulnerability["description"]
@@ -231,7 +230,6 @@ def addFindings():
                     fullDescription += "-"
                 result['message'] = {"text": f'{fullDescription[:1000] if not fullDescription == "" else "N/A"}'}
                 result['ruleId'] = ruleId
-                """
 
                 if locations and len(locations) > 0:
                     result['locations'] = locations
